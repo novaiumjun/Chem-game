@@ -1,0 +1,704 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CO2 加氢催化模拟 - 增强版</title>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #0f172a;
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            user-select: none;
+            color: white;
+        }
+
+        #game-container {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        canvas {
+            box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+            background: linear-gradient(to bottom, #0f172a 0%, #1e293b 100%);
+        }
+
+        /* 左侧控制面板 - 紧凑版 */
+        #hud-left {
+            position: absolute;
+            top: 15px;
+            left: 15px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        .panel {
+            background: rgba(15, 23, 42, 0.9);
+            backdrop-filter: blur(8px);
+            padding: 12px;
+            border-radius: 10px;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            pointer-events: auto;
+            width: 220px; /* 宽度变小 */
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+
+        h2 { 
+            margin: 0 0 8px 0; 
+            font-size: 0.85rem; 
+            color: #38bdf8; 
+            border-bottom: 1px solid rgba(255,255,255,0.1); 
+            padding-bottom: 4px; 
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .control-group { margin-bottom: 8px; }
+        
+        .label-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.75rem;
+            color: #cbd5e1;
+            margin-bottom: 2px;
+        }
+        
+        input[type=range] {
+            width: 100%;
+            height: 4px;
+            background: #475569;
+            border-radius: 2px;
+            outline: none;
+            -webkit-appearance: none;
+            display: block;
+            margin-top: 2px;
+        }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 12px;
+            height: 12px;
+            background: #38bdf8;
+            border-radius: 50%;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        input[type=range]:hover::-webkit-slider-thumb { background: #0ea5e9; }
+
+        .val-disp { font-family: 'Courier New', monospace; color: #fbbf24; font-weight: bold; }
+
+        /* 右上角统计面板 */
+        #hud-stats {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            align-items: flex-end;
+        }
+        
+        .stat-box {
+            background: rgba(15, 23, 42, 0.8);
+            border: 1px solid rgba(56, 189, 248, 0.3);
+            padding: 10px 15px;
+            border-radius: 8px;
+            text-align: right;
+            backdrop-filter: blur(4px);
+        }
+        .stat-label { font-size: 0.75rem; color: #94a3b8; margin-bottom: 2px; }
+        .stat-value { font-size: 1.2rem; font-weight: bold; color: white; font-family: 'Courier New', monospace; }
+        .stat-value.co { color: #facc15; }
+        .stat-value.h2o { color: #60a5fa; }
+
+        /* 右下角图例 */
+        #hud-bottom-right {
+            position: absolute;
+            bottom: 15px;
+            right: 15px;
+            pointer-events: none;
+        }
+        .legend {
+            display: flex;
+            gap: 12px;
+            font-size: 0.75rem;
+            background: rgba(0,0,0,0.6);
+            padding: 8px 15px;
+            border-radius: 20px;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+        .legend-item { display: flex; align-items: center; gap: 5px; color: #e2e8f0; }
+        .dot { width: 10px; height: 10px; border-radius: 50%; box-shadow: 0 0 4px rgba(0,0,0,0.5); }
+
+        /* 按钮样式 */
+        .btn-reset {
+            width: 100%;
+            background: #ef4444;
+            color: white;
+            border: none;
+            padding: 6px;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            cursor: pointer;
+            margin-top: 5px;
+            transition: background 0.2s;
+        }
+        .btn-reset:hover { background: #dc2626; }
+
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <div id="hud-left">
+        <!-- 环境参数 -->
+        <div class="panel">
+            <h2>反应环境</h2>
+            <div class="control-group">
+                <div class="label-row">
+                    <span>温度 (Temp)</span>
+                    <span id="disp-temp" class="val-disp">600°C</span>
+                </div>
+                <input type="range" id="in-temp" min="0" max="800" value="600">
+            </div>
+            <div class="control-group">
+                <div class="label-row">
+                    <span>压力 (Pressure)</span>
+                    <span id="disp-pres" class="val-disp">1.0 bar</span>
+                </div>
+                <input type="range" id="in-pres" min="0.1" max="30" step="0.1" value="1.0">
+            </div>
+            <div style="font-size:0.7rem; color:#64748b; margin-top:5px; text-align:right;">
+                速率: <span id="disp-rate" style="color:#10b981">1.0x</span>
+            </div>
+        </div>
+
+        <!-- 物质控制 -->
+        <div class="panel">
+            <h2>目标数量</h2>
+            <div class="control-group">
+                <div class="label-row">
+                    <span>CO₂</span>
+                    <span id="disp-co2-cnt" class="val-disp">10</span>
+                </div>
+                <input type="range" id="in-co2-cnt" min="1" max="100" value="10">
+            </div>
+            <div class="control-group">
+                <div class="label-row">
+                    <span>H₂</span>
+                    <span id="disp-h2-cnt" class="val-disp">10</span>
+                </div>
+                <input type="range" id="in-h2-cnt" min="1" max="100" value="10">
+            </div>
+            <button class="btn-reset" id="btn-reset">重置模拟 / Reset</button>
+        </div>
+    </div>
+
+    <!-- 右上角统计 -->
+    <div id="hud-stats">
+        <div class="stat-box">
+            <div class="stat-label">Total CO Generated</div>
+            <div class="stat-value co" id="stat-co-total">0</div>
+        </div>
+        <div class="stat-box">
+            <div class="stat-label">Total H₂O Generated</div>
+            <div class="stat-value h2o" id="stat-h2o-total">0</div>
+        </div>
+    </div>
+
+    <!-- 右下角图例 -->
+    <div id="hud-bottom-right">
+        <div class="legend">
+            <div class="legend-item"><div class="dot" style="background:#ef4444"></div>O</div>
+            <div class="legend-item"><div class="dot" style="background:#94a3b8"></div>C</div>
+            <div class="legend-item"><div class="dot" style="background:#f8fafc"></div>H</div>
+            <div class="legend-item"><div class="dot" style="background:#3b82f6"></div>Cu</div>
+        </div>
+    </div>
+
+    <canvas id="simCanvas"></canvas>
+</div>
+
+<script>
+    /**
+     * 系统逻辑说明：
+     * 1. 严格反应：2H(ads) + O(ads) -> H2O
+     * 2. CO 脱附：CO(ads) -> CO (受温度控制)
+     * 3. 统计功能：实时追踪历史生成量
+     */
+
+    const canvas = document.getElementById('simCanvas');
+    const ctx = canvas.getContext('2d');
+
+    // UI Inputs
+    const UI = {
+        temp: document.getElementById('in-temp'),
+        pres: document.getElementById('in-pres'),
+        co2Cnt: document.getElementById('in-co2-cnt'),
+        h2Cnt: document.getElementById('in-h2-cnt'),
+        dTemp: document.getElementById('disp-temp'),
+        dPres: document.getElementById('disp-pres'),
+        dRate: document.getElementById('disp-rate'),
+        dCO2: document.getElementById('disp-co2-cnt'),
+        dH2: document.getElementById('disp-h2-cnt'),
+        btnReset: document.getElementById('btn-reset'),
+        statCO: document.getElementById('stat-co-total'),
+        statH2O: document.getElementById('stat-h2o-total')
+    };
+
+    // 常量定义
+    const COLORS = {
+        C: '#94a3b8', 
+        O: '#ef4444', 
+        H: '#ffffff', // 纯白
+        Cu: '#3b82f6', 
+        BOND: '#64748b'
+    };
+    
+    // 基础半径
+    const ATOM_RADII = { C: 9, O: 8, H: 4, Cu: 12 };
+
+    // 分子蓝图
+    const BLUEPRINTS = {
+        CO2: { atoms: [{t:'O',x:-16,y:0},{t:'C',x:0,y:0},{t:'O',x:16,y:0}], bonds: [[0,1],[1,2]] },
+        H2:  { atoms: [{t:'H',x:-6,y:0},{t:'H',x:6,y:0}], bonds: [[0,1]] },
+        CO:  { atoms: [{t:'C',x:-8,y:0},{t:'O',x:8,y:0}], bonds: [[0,1]] },
+        H2O: { atoms: [{t:'O',x:0,y:-4},{t:'H',x:-8,y:5},{t:'H',x:8,y:5}], bonds: [[0,1],[0,2]] },
+        O_ads: { atoms: [{t:'O',x:0,y:0}], bonds: [] },
+        H_ads: { atoms: [{t:'H',x:0,y:0}], bonds: [] },
+        CO_ads:{ atoms: [{t:'C',x:0,y:6},{t:'O',x:0,y:-10}], bonds: [[0,1]] }
+    };
+
+    // ---------------- 全局状态 ----------------
+    let width, height, catalystY;
+    let catalystAtoms = [];
+    
+    let flyingMolecules = [];
+    let adsorbedMolecules = [];
+
+    let gameStats = {
+        totalCO: 0,
+        totalH2O: 0
+    };
+
+    let params = {
+        temp: 600,
+        pressure: 1.0,
+        speedFactor: 1.0,
+        targetCO2: 10,
+        targetH2: 10
+    };
+
+    // ---------------- 核心类定义 ----------------
+
+    class Molecule {
+        constructor(type, x, y) {
+            this.type = type;
+            this.bp = BLUEPRINTS[type];
+            this.x = x;
+            this.y = y;
+            
+            const spd = 2.0 * (0.5 + Math.random());
+            const ang = Math.random() * Math.PI * 2;
+            this.vx = Math.cos(ang) * spd;
+            this.vy = Math.sin(ang) * spd;
+            this.ang = Math.random() * 6;
+            this.vAng = (Math.random()-0.5) * 0.1;
+
+            this.state = 'flying'; 
+            this.opacity = 0; 
+        }
+
+        update(dt) {
+            if(this.opacity < 1) this.opacity += 0.05;
+
+            this.x += this.vx * dt;
+            this.y += this.vy * dt;
+            this.ang += this.vAng * dt;
+
+            if (this.state === 'flying') {
+                const bottomLimit = catalystY - 40;
+                if(this.x < 0) { this.x=0; this.vx = Math.abs(this.vx); }
+                if(this.x > width) { this.x=width; this.vx = -Math.abs(this.vx); }
+                if(this.y < 0) { this.y=0; this.vy = Math.abs(this.vy); }
+                if(this.y > bottomLimit) { this.y=bottomLimit; this.vy = -Math.abs(this.vy); }
+
+                if(Math.random() < 0.002 * params.pressure) {
+                    this.state = 'migrating';
+                    this.vy = Math.abs(this.vy) + 2; 
+                }
+
+            } else if (this.state === 'migrating') {
+                if (this.y >= catalystY - 25) {
+                    this.tryAdsorb();
+                }
+                if(this.x < 0 || this.x > width) this.vx *= -1;
+
+            } else if (this.state === 'leaving') {
+                if(this.y < -50 || this.x < -50 || this.x > width+50) {
+                    return 'remove';
+                }
+            }
+        }
+
+        tryAdsorb() {
+            if (this.type === 'CO2') {
+                spawnAdsorbed('CO_ads', this.x - 10, this.y);
+                spawnAdsorbed('O_ads', this.x + 10, this.y);
+                this.dead = true; 
+            } else if (this.type === 'H2') {
+                spawnAdsorbed('H_ads', this.x - 8, this.y);
+                spawnAdsorbed('H_ads', this.x + 8, this.y);
+                this.dead = true;
+            } else {
+                this.state = 'flying';
+                this.vy = -Math.abs(this.vy);
+            }
+        }
+
+        draw(ctx) {
+            ctx.save();
+            ctx.translate(this.x, this.y);
+            ctx.rotate(this.ang);
+            ctx.globalAlpha = this.opacity;
+            
+            ctx.beginPath();
+            this.bp.bonds.forEach(b => {
+                const a1 = this.bp.atoms[b[0]];
+                const a2 = this.bp.atoms[b[1]];
+                ctx.moveTo(a1.x, a1.y);
+                ctx.lineTo(a2.x, a2.y);
+            });
+            ctx.strokeStyle = COLORS.BOND;
+            ctx.lineWidth = 4;
+            ctx.lineCap = "round";
+            ctx.stroke();
+
+            this.bp.atoms.forEach(a => {
+                ctx.beginPath();
+                ctx.arc(a.x, a.y, ATOM_RADII[a.t], 0, Math.PI*2);
+                ctx.fillStyle = COLORS[a.t];
+                ctx.fill();
+                ctx.fillStyle = 'rgba(255,255,255,0.3)';
+                ctx.beginPath();
+                ctx.arc(a.x-ATOM_RADII[a.t]*0.3, a.y-ATOM_RADII[a.t]*0.3, ATOM_RADII[a.t]*0.4, 0, Math.PI*2);
+                ctx.fill();
+                ctx.strokeStyle = 'rgba(0,0,0,0.3)';
+                ctx.lineWidth = 1;
+                ctx.stroke();
+            });
+
+            ctx.restore();
+        }
+    }
+
+    class Adsorbed {
+        constructor(type, x, y) {
+            this.type = type;
+            this.bp = BLUEPRINTS[type];
+            this.x = x;
+            this.y = y;
+            this.timer = 0;
+            this.vx = (Math.random()-0.5) * 1.5;
+            this.dead = false;
+        }
+
+        update(dt) {
+            this.timer += dt;
+            
+            const diffusionSpeed = this.vx * dt * (1 + (params.temp/800));
+            this.x += diffusionSpeed;
+
+            if(this.x < 20) { this.x = 20; this.vx *= -1; }
+            if(this.x > width-20) { this.x = width-20; this.vx *= -1; }
+
+            this.y = catalystY - 10 + Math.sin(this.timer*0.2 + this.x)*2;
+
+            // CO 脱附
+            if (this.type === 'CO_ads') {
+                const lifeSpan = 200 * (600 / (params.temp + 100)); 
+                if (this.timer > lifeSpan) {
+                    this.desorb('CO');
+                }
+            }
+
+            // H 主动寻找 O
+            if (this.type === 'H_ads') {
+                this.checkForOxygen(dt);
+            }
+        }
+
+        checkForOxygen(dt) {
+            let closestO = null;
+            let minDist = 1000;
+
+            for (let other of adsorbedMolecules) {
+                if (other.type === 'O_ads' && !other.dead) {
+                    const dx = other.x - this.x;
+                    const dy = other.y - this.y;
+                    const dist = Math.sqrt(dx*dx + dy*dy);
+                    if (dist < minDist) {
+                        minDist = dist;
+                        closestO = other;
+                    }
+                }
+            }
+
+            const attractionRange = 150;
+            if (closestO && minDist < attractionRange) {
+                const dx = closestO.x - this.x;
+                const speed = 3.0 * dt * (params.speedFactor > 1 ? params.speedFactor*0.5 : 1); 
+                
+                if (dx > 0) this.x += speed;
+                else this.x -= speed;
+            }
+        }
+
+        desorb(productType) {
+            this.dead = true;
+            const p = new Molecule(productType, this.x, this.y - 20);
+            p.state = 'leaving';
+            p.vy = -3 - Math.random(); 
+            p.vx = (Math.random()-0.5)*2;
+            flyingMolecules.push(p);
+
+            // 更新统计
+            if(productType === 'CO') {
+                gameStats.totalCO++;
+                UI.statCO.innerText = gameStats.totalCO;
+            }
+        }
+
+        draw(ctx) {
+            ctx.save();
+            ctx.translate(this.x, this.y);
+            if(this.type === 'CO_ads') ctx.rotate(-Math.PI/2); 
+
+            ctx.beginPath();
+            this.bp.bonds.forEach(b => {
+                const a1 = this.bp.atoms[b[0]];
+                const a2 = this.bp.atoms[b[1]];
+                ctx.moveTo(a1.x, a1.y);
+                ctx.lineTo(a2.x, a2.y);
+            });
+            ctx.strokeStyle = COLORS.BOND;
+            ctx.lineWidth = 4;
+            ctx.stroke();
+
+            this.bp.atoms.forEach(a => {
+                ctx.beginPath();
+                ctx.arc(a.x, a.y, ATOM_RADII[a.t], 0, Math.PI*2);
+                ctx.fillStyle = COLORS[a.t];
+                ctx.fill();
+                ctx.stroke();
+            });
+            ctx.restore();
+        }
+    }
+
+    // ---------------- 系统功能 ----------------
+
+    function spawnAdsorbed(type, x, y) {
+        adsorbedMolecules.push(new Adsorbed(type, x, y));
+    }
+
+    function checkChemistry() {
+        const O_list = adsorbedMolecules.filter(m => m.type === 'O_ads' && !m.dead);
+        const H_list = adsorbedMolecules.filter(m => m.type === 'H_ads' && !m.dead);
+
+        if (H_list.length < 2) return;
+
+        const reactionDist = 25; 
+
+        for (let oAtom of O_list) {
+            if (oAtom.dead) continue;
+
+            let partners = [];
+            for (let hAtom of H_list) {
+                if (hAtom.dead) continue;
+                if (Math.abs(hAtom.x - oAtom.x) < reactionDist) {
+                    partners.push(hAtom);
+                    if (partners.length === 2) break;
+                }
+            }
+
+            if (partners.length === 2) {
+                oAtom.dead = true;
+                partners[0].dead = true;
+                partners[1].dead = true;
+
+                const h2o = new Molecule('H2O', oAtom.x, oAtom.y - 20);
+                h2o.state = 'leaving';
+                h2o.vy = -4; 
+                h2o.vx = (Math.random()-0.5)*3;
+                flyingMolecules.push(h2o);
+
+                // 更新统计
+                gameStats.totalH2O++;
+                UI.statH2O.innerText = gameStats.totalH2O;
+            }
+        }
+    }
+
+    function managePopulation() {
+        let currentCO2 = 0;
+        let currentH2 = 0;
+
+        const countEntity = (type) => {
+            if (['CO2', 'CO', 'CO_ads', 'O_ads'].includes(type)) currentCO2++;
+            if (['H2', 'H_ads', 'H2O'].includes(type)) currentH2++;
+        };
+
+        flyingMolecules.forEach(m => countEntity(m.type));
+        adsorbedMolecules.forEach(m => countEntity(m.type));
+
+        if (currentCO2 < params.targetCO2 && Math.random() < 0.1) {
+            spawnFlying('CO2');
+        }
+        if (currentH2 < params.targetH2 && Math.random() < 0.1) {
+            spawnFlying('H2');
+        }
+    }
+
+    function spawnFlying(type) {
+        const x = Math.random() * (width - 40) + 20;
+        const m = new Molecule(type, x, -40);
+        m.vy = Math.abs(m.vy) + 1;
+        flyingMolecules.push(m);
+    }
+
+    function resetGame() {
+        flyingMolecules = [];
+        adsorbedMolecules = [];
+        gameStats.totalCO = 0;
+        gameStats.totalH2O = 0;
+        UI.statCO.innerText = "0";
+        UI.statH2O.innerText = "0";
+        // 预生成
+        for(let i=0; i<params.targetCO2; i++) spawnFlying('CO2');
+        for(let i=0; i<params.targetH2; i++) spawnFlying('H2');
+    }
+
+    // ---------------- 渲染与循环 ----------------
+
+    function initCatalyst() {
+        catalystAtoms = [];
+        const r = ATOM_RADII.Cu;
+        const cols = Math.ceil(width / (r*2)) + 2;
+        for(let i=0; i<cols; i++) {
+            catalystAtoms.push({x: i*r*2, y: catalystY});
+            catalystAtoms.push({x: i*r*2 + r, y: catalystY + r*1.732});
+        }
+    }
+
+    function resize() {
+        width = canvas.width = window.innerWidth;
+        height = canvas.height = window.innerHeight;
+        catalystY = height - 50;
+        initCatalyst();
+    }
+
+    function updateParamsFromUI() {
+        const T = parseInt(UI.temp.value);
+        const P = parseFloat(UI.pres.value);
+        const C2 = parseInt(UI.co2Cnt.value);
+        const H2 = parseInt(UI.h2Cnt.value);
+
+        params.temp = T;
+        params.pressure = P;
+        params.targetCO2 = C2;
+        params.targetH2 = H2;
+
+        const tempMult = Math.exp(0.008 * (T - 600));
+        const presMult = P; 
+        
+        let rate = tempMult * presMult;
+        if (rate > 20) rate = 20; 
+
+        params.speedFactor = rate;
+
+        UI.dTemp.innerText = T + "°C";
+        UI.dPres.innerText = P.toFixed(1) + " bar";
+        UI.dRate.innerText = rate.toFixed(1) + "x";
+        UI.dCO2.innerText = C2;
+        UI.dH2.innerText = H2;
+    }
+
+    function loop() {
+        ctx.clearRect(0, 0, width, height);
+
+        // 催化剂
+        catalystAtoms.forEach(p => {
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, ATOM_RADII.Cu, 0, Math.PI*2);
+            ctx.fillStyle = COLORS.Cu;
+            ctx.fill();
+            const g = ctx.createRadialGradient(p.x-4, p.y-4, 2, p.x, p.y, ATOM_RADII.Cu);
+            g.addColorStop(0, '#60a5fa');
+            g.addColorStop(1, '#1e40af');
+            ctx.fillStyle = g;
+            ctx.fill();
+            ctx.strokeStyle = '#1e3a8a';
+            ctx.stroke();
+        });
+
+        // 物理更新
+        let steps = Math.ceil(params.speedFactor);
+        if (steps < 1) steps = 1;
+        if (steps > 10) steps = 10; 
+        
+        const dt = params.speedFactor / steps;
+
+        for (let s=0; s<steps; s++) {
+            for (let i = flyingMolecules.length - 1; i >= 0; i--) {
+                const res = flyingMolecules[i].update(dt);
+                if (res === 'remove' || flyingMolecules[i].dead) {
+                    flyingMolecules.splice(i, 1);
+                }
+            }
+            for (let i = adsorbedMolecules.length - 1; i >= 0; i--) {
+                adsorbedMolecules[i].update(dt);
+                if (adsorbedMolecules[i].dead) {
+                    adsorbedMolecules.splice(i, 1);
+                }
+            }
+            checkChemistry();
+        }
+
+        managePopulation();
+
+        adsorbedMolecules.forEach(m => m.draw(ctx));
+        flyingMolecules.forEach(m => m.draw(ctx));
+
+        requestAnimationFrame(loop);
+    }
+
+    // 事件监听
+    window.addEventListener('resize', resize);
+    [UI.temp, UI.pres, UI.co2Cnt, UI.h2Cnt].forEach(el => {
+        el.addEventListener('input', updateParamsFromUI);
+    });
+    UI.btnReset.addEventListener('click', resetGame);
+
+    // 启动
+    resize();
+    updateParamsFromUI();
+    // 初始生成
+    for(let i=0; i<10; i++) { spawnFlying('CO2'); spawnFlying('H2'); }
+    loop();
+
+</script>
+</body>
+</html>

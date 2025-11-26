@@ -1,0 +1,601 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CO2 加氢催化反应模拟</title>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #1e293b; /* 深蓝灰色背景 */
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            user-select: none;
+        }
+
+        #game-container {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        canvas {
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            border-radius: 8px;
+            background: linear-gradient(to bottom, #1e293b, #0f172a);
+        }
+
+        #ui-layer {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            pointer-events: none;
+            color: white;
+        }
+
+        .hud-panel {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(4px);
+            padding: 15px;
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            margin-bottom: 10px;
+        }
+
+        h1 {
+            margin: 0 0 5px 0;
+            font-size: 1.2rem;
+            color: #38bdf8;
+        }
+
+        p {
+            margin: 0;
+            font-size: 0.9rem;
+            color: #cbd5e1;
+        }
+
+        /* 模态框样式 */
+        #modal {
+            display: none;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: white;
+            padding: 30px;
+            border-radius: 16px;
+            text-align: center;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+            z-index: 100;
+            max-width: 90%;
+        }
+        
+        #modal h2 {
+            margin-top: 0;
+            color: #1e293b;
+        }
+
+        button {
+            background-color: #3b82f6;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+
+        button:hover {
+            background-color: #2563eb;
+        }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <div id="ui-layer">
+        <div class="hud-panel">
+            <h1>CO₂ 加氢催化模拟</h1>
+            <p>目标: 将所有 CO₂ 和 H₂ 拖动到催化剂上</p>
+            <p style="margin-top: 8px; font-weight: bold; color: #fbbf24;" id="status-text">待反应分子: 12</p>
+        </div>
+        <div class="hud-panel">
+            <div style="display: flex; align-items: center; gap: 10px; font-size: 0.8rem;">
+                <span style="display:inline-block; width:10px; height:10px; background:#ef4444; border-radius:50%"></span> 氧(O)
+                <span style="display:inline-block; width:10px; height:10px; background:#94a3b8; border-radius:50%"></span> 碳(C)
+                <span style="display:inline-block; width:10px; height:10px; background:#f8fafc; border-radius:50%"></span> 氢(H)
+                <span style="display:inline-block; width:10px; height:10px; background:#3b82f6; border-radius:50%"></span> 铜(Cu)
+            </div>
+        </div>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <div id="modal">
+        <h2 id="modal-title">游戏结束!</h2>
+        <p id="modal-msg">所有的分子都已完成转化。</p>
+        <br>
+        <button onclick="location.reload()">重新开始</button>
+    </div>
+</div>
+
+<script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const statusText = document.getElementById('status-text');
+    const modal = document.getElementById('modal');
+
+    // ---------------- 配置常量 ----------------
+    const COLORS = {
+        C: '#94a3b8',  // 灰色
+        O: '#ef4444',  // 红色
+        H: '#f8fafc',  // 白色
+        Cu: '#3b82f6', // 蓝色 (催化剂)
+        BOND: '#64748b' // 键的颜色
+    };
+
+    const RADII = {
+        C: 12,
+        O: 10,
+        H: 6,
+        Cu: 15
+    };
+
+    // 分子定义 (相对坐标)
+    const MOLECULE_TYPES = {
+        CO2: {
+            atoms: [
+                { type: 'O', x: -22, y: 0 },
+                { type: 'C', x: 0, y: 0 },
+                { type: 'O', x: 22, y: 0 }
+            ],
+            bonds: [[0, 1], [1, 2]]
+        },
+        H2: {
+            atoms: [
+                { type: 'H', x: -8, y: 0 },
+                { type: 'H', x: 8, y: 0 }
+            ],
+            bonds: [[0, 1]]
+        },
+        CO: {
+            atoms: [
+                { type: 'C', x: -10, y: 0 },
+                { type: 'O', x: 10, y: 0 }
+            ],
+            bonds: [[0, 1]]
+        },
+        H2O: {
+            atoms: [
+                { type: 'O', x: 0, y: -5 },
+                { type: 'H', x: -10, y: 8 },
+                { type: 'H', x: 10, y: 8 }
+            ],
+            bonds: [[0, 1], [0, 2]]
+        },
+        // 单原子状态 (用于吸附态)
+        O_ads: { atoms: [{ type: 'O', x: 0, y: 0 }], bonds: [] },
+        H_ads: { atoms: [{ type: 'H', x: 0, y: 0 }], bonds: [] },
+        CO_ads: { // 吸附的 CO，竖着放或者稍微倾斜
+             atoms: [
+                { type: 'C', x: 0, y: 5 },
+                { type: 'O', x: 0, y: -15 }
+            ],
+            bonds: [[0, 1]]
+        }
+    };
+
+    // ---------------- 游戏状态 ----------------
+    let width, height;
+    let catalystParticles = [];
+    let floatingMolecules = [];
+    let adsorbedSpecies = []; // 吸附在表面的物种
+    let draggedMolecule = null;
+    let dragOffset = { x: 0, y: 0 };
+    let initialCount = 12; // 6 CO2 + 6 H2
+    let processedCount = 0;
+    let lastTime = 0;
+
+    // ---------------- 类定义 ----------------
+
+    class Molecule {
+        constructor(typeKey, x, y, isFixed = false) {
+            this.typeKey = typeKey;
+            this.template = MOLECULE_TYPES[typeKey];
+            this.x = x;
+            this.y = y;
+            // 随机速度
+            this.vx = (Math.random() - 0.5) * 1.5;
+            this.vy = (Math.random() - 0.5) * 1.5;
+            this.angle = Math.random() * Math.PI * 2;
+            this.va = (Math.random() - 0.5) * 0.05; // 角速度
+            this.isFixed = isFixed; // 是否被固定(吸附)
+            
+            // 刚生成的分子(产物)会有一个淡出效果或者飞走的效果
+            this.isProduct = false; 
+            this.opacity = 1.0;
+        }
+
+        update(dt) {
+            if (this.isFixed) return; // 吸附的分子不移动
+
+            this.x += this.vx;
+            this.y += this.vy;
+            this.angle += this.va;
+
+            // 边界反弹
+            const r = 25; // 近似碰撞半径
+            if (this.x < r || this.x > width - r) this.vx *= -1;
+            if (this.y < r || this.y > height - r) this.vy *= -1;
+
+            // 简单的阻尼，防止速度过快
+            if (this.x < 0) this.x = r;
+            if (this.x > width) this.x = width - r;
+            if (this.y < 0) this.y = r;
+            // 注意：底部有催化剂，但浮动分子主要在上层，碰到底部也反弹
+            if (this.y > height) this.y = height - r;
+        }
+
+        draw(ctx) {
+            ctx.save();
+            ctx.translate(this.x, this.y);
+            ctx.rotate(this.angle);
+            ctx.globalAlpha = this.opacity;
+
+            // 绘制键
+            ctx.strokeStyle = COLORS.BOND;
+            ctx.lineWidth = 4;
+            ctx.lineCap = 'round';
+            this.template.bonds.forEach(bond => {
+                const a1 = this.template.atoms[bond[0]];
+                const a2 = this.template.atoms[bond[1]];
+                ctx.beginPath();
+                ctx.moveTo(a1.x, a1.y);
+                ctx.lineTo(a2.x, a2.y);
+                ctx.stroke();
+            });
+
+            // 绘制原子
+            this.template.atoms.forEach(atom => {
+                ctx.beginPath();
+                ctx.arc(atom.x, atom.y, RADII[atom.type], 0, Math.PI * 2);
+                ctx.fillStyle = COLORS[atom.type];
+                ctx.fill();
+                // 简单的光照高光
+                ctx.fillStyle = 'rgba(255,255,255,0.3)';
+                ctx.beginPath();
+                ctx.arc(atom.x - RADII[atom.type]*0.3, atom.y - RADII[atom.type]*0.3, RADII[atom.type]*0.3, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // 轮廓
+                ctx.strokeStyle = 'rgba(0,0,0,0.3)';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.arc(atom.x, atom.y, RADII[atom.type], 0, Math.PI * 2);
+                ctx.stroke();
+            });
+
+            ctx.restore();
+        }
+
+        // 简单的点击检测
+        contains(mx, my) {
+            const dx = mx - this.x;
+            const dy = my - this.y;
+            return (dx*dx + dy*dy) < 900; // 30px 半径点击区域
+        }
+    }
+
+    // 催化剂粒子
+    class CatalystAtom {
+        constructor(x, y) {
+            this.x = x;
+            this.y = y;
+            this.r = RADII.Cu;
+        }
+
+        draw(ctx) {
+            ctx.beginPath();
+            ctx.arc(this.x, this.y, this.r, 0, Math.PI * 2);
+            ctx.fillStyle = COLORS.Cu;
+            ctx.fill();
+            // 3D 效果
+            const grad = ctx.createRadialGradient(this.x - 5, this.y - 5, 2, this.x, this.y, this.r);
+            grad.addColorStop(0, '#93c5fd');
+            grad.addColorStop(1, '#1d4ed8');
+            ctx.fillStyle = grad;
+            ctx.fill();
+            
+            ctx.strokeStyle = '#1e3a8a';
+            ctx.lineWidth = 1;
+            ctx.stroke();
+        }
+    }
+
+    // ---------------- 初始化 ----------------
+
+    function resize() {
+        width = canvas.width = window.innerWidth;
+        height = canvas.height = window.innerHeight;
+        initCatalyst();
+    }
+
+    function initCatalyst() {
+        catalystParticles = [];
+        // 在底部生成一个"纳米颗粒"堆 (金字塔形状或半圆)
+        const centerX = width / 2;
+        const bottomY = height - 50;
+        const size = 30; // 间距
+        
+        // 构建 4 层金字塔
+        for (let row = 0; row < 4; row++) {
+            const cols = 8 - row; // 底层多，上层少
+            const rowWidth = (cols - 1) * size;
+            const startX = centerX - rowWidth / 2;
+            
+            for (let col = 0; col < cols; col++) {
+                // 简单的交错排列
+                const cx = startX + col * size;
+                const cy = bottomY - row * (size * 0.85);
+                catalystParticles.push(new CatalystAtom(cx, cy));
+            }
+        }
+    }
+
+    function initGame() {
+        floatingMolecules = [];
+        adsorbedSpecies = [];
+        processedCount = 0;
+        
+        // 生成 6 个 CO2
+        for(let i=0; i<6; i++) {
+            const m = new Molecule('CO2', Math.random() * width, Math.random() * (height/2));
+            floatingMolecules.push(m);
+        }
+        // 生成 6 个 H2
+        for(let i=0; i<6; i++) {
+            const m = new Molecule('H2', Math.random() * width, Math.random() * (height/2));
+            floatingMolecules.push(m);
+        }
+
+        updateStatus();
+    }
+
+    function updateStatus() {
+        const remaining = initialCount - processedCount;
+        statusText.innerText = `待反应分子: ${remaining}`;
+        if (remaining <= 0) {
+            setTimeout(() => {
+                modal.style.display = 'block';
+            }, 1000); // 稍微延迟一点显示胜利
+        }
+    }
+
+    // ---------------- 游戏逻辑循环 ----------------
+
+    function checkReaction() {
+        // 查找是否有 1 个 O 和 2 个 H 都在吸附状态
+        // 简单的逻辑：只要列表里有，我们就认为它们迁移到了一起发生了反应
+        
+        const oIndex = adsorbedSpecies.findIndex(m => m.typeKey === 'O_ads');
+        
+        if (oIndex !== -1) {
+            // 找到了 O，现在找 2 个 H
+            // 先过滤掉刚刚找到的那个O，避免索引混乱
+            const hIndices = [];
+            for(let i=0; i<adsorbedSpecies.length; i++) {
+                if (adsorbedSpecies[i].typeKey === 'H_ads') {
+                    hIndices.push(i);
+                    if(hIndices.length === 2) break;
+                }
+            }
+
+            if (hIndices.length === 2) {
+                // 满足反应条件：O + 2H -> H2O
+                // 反应发生的位置：取 O 的位置
+                const oxygenAtom = adsorbedSpecies[oIndex];
+                const rxX = oxygenAtom.x;
+                const rxY = oxygenAtom.y - 20; // 稍微往上浮一点
+
+                // 从吸附列表移除 (注意从后往前删或者按索引细心删)
+                // 这里我们构建一个新的列表排除掉这三个原子
+                const toRemove = [oIndex, hIndices[0], hIndices[1]].sort((a,b) => b-a);
+                toRemove.forEach(idx => adsorbedSpecies.splice(idx, 1));
+
+                // 生成 H2O
+                const h2o = new Molecule('H2O', rxX, rxY, false);
+                h2o.vy = -1.5; // 向上飞
+                h2o.isProduct = true; // 标记为产物
+                floatingMolecules.push(h2o);
+            }
+        }
+    }
+
+    function loop(timestamp) {
+        const dt = timestamp - lastTime;
+        lastTime = timestamp;
+
+        ctx.clearRect(0, 0, width, height);
+
+        // 1. 绘制催化剂 (背景)
+        catalystParticles.forEach(p => p.draw(ctx));
+
+        // 2. 绘制催化剂区域提示线 (虚线)
+        if (draggedMolecule) {
+            ctx.save();
+            ctx.setLineDash([5, 5]);
+            ctx.strokeStyle = 'rgba(59, 130, 246, 0.5)';
+            ctx.lineWidth = 2;
+            const catY = height - 120;
+            ctx.beginPath();
+            ctx.moveTo(0, catY);
+            ctx.lineTo(width, catY);
+            ctx.stroke();
+            
+            ctx.fillStyle = 'rgba(59, 130, 246, 0.2)';
+            ctx.font = "16px Arial";
+            ctx.fillText("催化剂表面区域", width/2 - 50, catY + 20);
+            ctx.restore();
+        }
+
+        // 3. 更新并绘制吸附物种
+        adsorbedSpecies.forEach(s => {
+            // 简单的热振动
+            s.x += (Math.random()-0.5) * 0.5;
+            s.y += (Math.random()-0.5) * 0.5;
+            
+            // 如果是 CO_ads，给它一个倒计时或者自动脱附逻辑
+            if (s.typeKey === 'CO_ads') {
+                if (!s.desorbTimer) s.desorbTimer = 0;
+                s.desorbTimer++;
+                // 60 帧 (约1秒) 后脱附
+                if (s.desorbTimer > 60) {
+                    s.shouldDesorb = true;
+                }
+            }
+            s.draw(ctx);
+        });
+
+        // 处理 CO 脱附
+        for (let i = adsorbedSpecies.length - 1; i >= 0; i--) {
+            const s = adsorbedSpecies[i];
+            if (s.shouldDesorb) {
+                adsorbedSpecies.splice(i, 1);
+                const co = new Molecule('CO', s.x, s.y - 10, false);
+                co.vy = -1.0; // 向上飘
+                co.isProduct = true;
+                floatingMolecules.push(co);
+            }
+        }
+
+        // 检查 H2O 生成反应
+        // 为了防止每帧都检查太快，我们简单的每帧都有小概率检查，或者就在这里检查
+        checkReaction();
+
+        // 4. 更新并绘制浮动分子
+        floatingMolecules.forEach(m => {
+            m.update();
+            m.draw(ctx);
+        });
+
+        requestAnimationFrame(loop);
+    }
+
+    // ---------------- 交互控制 ----------------
+
+    function getMousePos(e) {
+        const rect = canvas.getBoundingClientRect();
+        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+        return {
+            x: clientX - rect.left,
+            y: clientY - rect.top
+        };
+    }
+
+    // 判断是否在催化剂区域 (简单判定：Y 坐标靠下)
+    function isOnCatalyst(x, y) {
+        const catalystTopY = height - 120; // 设定一个阈值
+        return y > catalystTopY;
+    }
+
+    function handleInputStart(e) {
+        const pos = getMousePos(e);
+        // 倒序检测，优先选中上层的
+        for (let i = floatingMolecules.length - 1; i >= 0; i--) {
+            const m = floatingMolecules[i];
+            // 只能拖动反应物 (CO2, H2)，产物不能拖回去
+            if (m.contains(pos.x, pos.y) && !m.isProduct) {
+                draggedMolecule = m;
+                dragOffset.x = m.x - pos.x;
+                dragOffset.y = m.y - pos.y;
+                // 暂时停止它的运动
+                m.vx = 0;
+                m.vy = 0;
+                break;
+            }
+        }
+    }
+
+    function handleInputMove(e) {
+        if (draggedMolecule) {
+            e.preventDefault();
+            const pos = getMousePos(e);
+            draggedMolecule.x = pos.x + dragOffset.x;
+            draggedMolecule.y = pos.y + dragOffset.y;
+        }
+    }
+
+    function handleInputEnd(e) {
+        if (!draggedMolecule) return;
+
+        // 检测是否放置在催化剂上
+        if (isOnCatalyst(draggedMolecule.x, draggedMolecule.y)) {
+            // 触发吸附/解离逻辑
+            dissociateAndAdsorb(draggedMolecule);
+            
+            // 从浮动列表中移除
+            const idx = floatingMolecules.indexOf(draggedMolecule);
+            if (idx > -1) floatingMolecules.splice(idx, 1);
+            
+            processedCount++;
+            updateStatus();
+        } else {
+            // 如果没放到催化剂上，给一个随机速度让它继续飘
+            draggedMolecule.vx = (Math.random() - 0.5) * 2;
+            draggedMolecule.vy = (Math.random() - 0.5) * 2;
+        }
+
+        draggedMolecule = null;
+    }
+
+    // 核心化学逻辑：解离与吸附
+    function dissociateAndAdsorb(molecule) {
+        const mx = molecule.x;
+        const my = molecule.y;
+
+        if (molecule.typeKey === 'CO2') {
+            // CO2 -> CO(ads) + O(ads)
+            // 在附近位置生成
+            const co = new Molecule('CO_ads', mx - 15, my, true);
+            co.angle = -Math.PI / 2; // 竖起来
+            const o = new Molecule('O_ads', mx + 15, my, true);
+            
+            adsorbedSpecies.push(co);
+            adsorbedSpecies.push(o);
+        } else if (molecule.typeKey === 'H2') {
+            // H2 -> H(ads) + H(ads)
+            const h1 = new Molecule('H_ads', mx - 10, my, true);
+            const h2 = new Molecule('H_ads', mx + 10, my, true);
+            
+            adsorbedSpecies.push(h1);
+            adsorbedSpecies.push(h2);
+        }
+    }
+
+    // 事件监听
+    window.addEventListener('resize', resize);
+    
+    canvas.addEventListener('mousedown', handleInputStart);
+    window.addEventListener('mousemove', handleInputMove);
+    window.addEventListener('mouseup', handleInputEnd);
+
+    canvas.addEventListener('touchstart', handleInputStart, {passive: false});
+    window.addEventListener('touchmove', handleInputMove, {passive: false});
+    window.addEventListener('touchend', handleInputEnd);
+
+    // 启动
+    resize();
+    initGame();
+    requestAnimationFrame(loop);
+
+</script>
+</body>
+</html>
