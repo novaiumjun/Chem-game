@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF 批量区域遮盖工具 (坐标获取版)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 引入 PDF.js (CDNJS) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script>
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    </script>
+    <!-- 引入 PDF-Lib (CDNJS) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+    <style>
+        #canvas-container {
+            position: relative;
+            display: inline-block;
+            border: 1px solid #e5e7eb;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            cursor: crosshair;
+            font-size: 0;
+        }
+        canvas { display: block; }
+        #selection-box {
+            position: absolute;
+            border: 2px dashed #ef4444;
+            background-color: rgba(239, 68, 68, 0.2);
+            display: none;
+            pointer-events: none;
+        }
+        .loading-overlay {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(255,255,255,0.9);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 50;
+            display: none;
+            flex-direction: column;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-800 font-sans">
+
+    <div class="max-w-4xl mx-auto p-6">
+        <header class="mb-8 text-center">
+            <h1 class="text-3xl font-bold text-gray-900 mb-2">PDF 水印坐标获取 & 遮盖工具</h1>
+            <p class="text-gray-600">框选水印位置，可直接遮盖，或获取坐标用于 Python 脚本彻底删除。</p>
+            <div class="mt-2 text-xs text-blue-600 font-semibold bg-blue-100 inline-block px-3 py-1 rounded">
+                辅助模式：已启用坐标计算
+            </div>
+        </header>
+
+        <!-- 操作区 -->
+        <div class="bg-white p-6 rounded-lg shadow-md mb-6">
+            <div class="flex flex-col md:flex-row gap-4 items-center justify-between mb-4">
+                <input type="file" id="file-input" accept="application/pdf" class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"/>
+                
+                <div class="flex gap-2 w-full md:w-auto">
+                    <button id="process-btn" disabled class="px-6 py-2 bg-gray-400 text-white rounded-lg font-semibold cursor-not-allowed transition-colors w-full md:w-auto whitespace-nowrap">
+                        下载遮盖版 PDF
+                    </button>
+                </div>
+            </div>
+            
+            <!-- 坐标显示区 (新增) -->
+            <div id="coords-panel" class="hidden mb-4 p-3 bg-red-50 border border-red-200 rounded text-sm">
+                <p class="font-bold text-red-700 mb-1">🔥 彻底删除需要的坐标数据 (复制下方内容):</p>
+                <code id="coords-text" class="block bg-white border border-gray-300 p-2 rounded select-all font-mono text-gray-800 break-all">
+                    请先框选区域...
+                </code>
+                <p class="text-xs text-gray-500 mt-1">将此坐标填入 Python 脚本的 `target_rect` 变量中即可实现物理删除。</p>
+            </div>
+            
+            <div class="text-sm text-gray-500 mb-2">
+                <span class="font-bold">步骤：</span>1. 上传文件 -> 2. 在预览图上<span class="text-red-500 font-bold">框选</span>水印 -> 3. 复制坐标或直接下载
+            </div>
+        </div>
+
+        <!-- Canvas 预览区 -->
+        <div class="flex justify-center overflow-auto bg-gray-200 p-4 rounded-lg border border-gray-300 min-h-[300px]">
+            <div id="canvas-container">
+                <canvas id="pdf-canvas"></canvas>
+                <div id="selection-box"></div>
+            </div>
+            <div id="placeholder-text" class="absolute mt-20 text-gray-400 font-medium pointer-events-none">请先上传 PDF 文件</div>
+        </div>
+    </div>
+
+    <!-- Loading -->
+    <div id="loading" class="loading-overlay">
+        <div class="text-xl font-semibold text-blue-600 flex items-center gap-3 mb-2">
+            <svg class="animate-spin h-6 w-6 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            处理中...
+        </div>
+    </div>
+
+    <script>
+        let pdfDoc = null;
+        let pdfBytesOriginal = null;
+        let scale = 1.5;
+        let isDrawing = false;
+        let startX, startY;
+        let selectRect = null;
+        
+        // 计算出的 PDF 真实坐标
+        let pdfRealCoords = null;
+
+        const fileInput = document.getElementById('file-input');
+        const processBtn = document.getElementById('process-btn');
+        const canvas = document.getElementById('pdf-canvas');
+        const ctx = canvas.getContext('2d');
+        const container = document.getElementById('canvas-container');
+        const selectionBox = document.getElementById('selection-box');
+        const placeholder = document.getElementById('placeholder-text');
+        const loading = document.getElementById('loading');
+        const coordsPanel = document.getElementById('coords-panel');
+        const coordsText = document.getElementById('coords-text');
+
+        fileInput.addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            placeholder.style.display = 'none';
+            resetSelection();
+            
+            try {
+                const arrayBuffer = await file.arrayBuffer();
+                const uint8Copy = new Uint8Array(arrayBuffer);
+                pdfBytesOriginal = uint8Copy.slice().buffer; 
+
+                const loadingTask = pdfjsLib.getDocument(arrayBuffer);
+                pdfDoc = await loadingTask.promise;
+                renderPage(1);
+
+            } catch (err) {
+                alert("文件读取失败: " + err.message);
+            }
+        });
+
+        function resetSelection() {
+            processBtn.disabled = true;
+            processBtn.classList.add('bg-gray-400', 'cursor-not-allowed');
+            processBtn.classList.remove('bg-blue-600', 'hover:bg-blue-700');
+            selectionBox.style.display = 'none';
+            coordsPanel.classList.add('hidden');
+            selectRect = null;
+        }
+
+        async function renderPage(num) {
+            try {
+                const page = await pdfDoc.getPage(num);
+                const viewport = page.getViewport({ scale: scale });
+
+                canvas.height = viewport.height;
+                canvas.width = viewport.width;
+
+                const renderContext = { canvasContext: ctx, viewport: viewport };
+                await page.render(renderContext).promise;
+            } catch (err) {
+                console.error("渲染失败:", err);
+            }
+        }
+
+        container.addEventListener('mousedown', (e) => {
+            if(!pdfDoc) return;
+            isDrawing = true;
+            const rect = container.getBoundingClientRect();
+            startX = e.clientX - rect.left;
+            startY = e.clientY - rect.top;
+            
+            selectionBox.style.left = startX + 'px';
+            selectionBox.style.top = startY + 'px';
+            selectionBox.style.width = '0px';
+            selectionBox.style.height = '0px';
+            selectionBox.style.display = 'block';
+            
+            processBtn.disabled = true;
+            coordsPanel.classList.add('hidden');
+        });
+
+        container.addEventListener('mousemove', (e) => {
+            if (!isDrawing) return;
+            const rect = container.getBoundingClientRect();
+            const currentX = e.clientX - rect.left;
+            const currentY = e.clientY - rect.top;
+
+            const width = currentX - startX;
+            const height = currentY - startY;
+
+            selectionBox.style.width = Math.abs(width) + 'px';
+            selectionBox.style.height = Math.abs(height) + 'px';
+            selectionBox.style.left = (width < 0 ? currentX : startX) + 'px';
+            selectionBox.style.top = (height < 0 ? currentY : startY) + 'px';
+        });
+
+        document.addEventListener('mouseup', async (e) => {
+            if (!isDrawing) return;
+            isDrawing = false;
+            
+            const style = window.getComputedStyle(selectionBox);
+            const w = parseFloat(style.width);
+            const h = parseFloat(style.height);
+            const x = parseFloat(style.left);
+            const y = parseFloat(style.top);
+
+            if (w > 5 && h > 5) {
+                selectRect = { x, y, w, h };
+                
+                // --- 计算真实 PDF 坐标 (用于 Python 脚本) ---
+                // 需要重新加载 PDF 信息来获取页面原始尺寸
+                const { PDFDocument } = PDFLib;
+                const pdfDocEdit = await PDFDocument.load(pdfBytesOriginal, { ignoreEncryption: true });
+                const page = pdfDocEdit.getPages()[0];
+                const { width: pdfPageW, height: pdfPageH } = page.getSize();
+                
+                const ratioX = pdfPageW / canvas.width;
+                const ratioY = pdfPageH / canvas.height;
+
+                // PDF 坐标系计算 (注意：PDF-Lib 和 PyMuPDF 的坐标原点处理略有不同，
+                // 但通常 PDF 原点在左下角。这里我们需要给出左上角和右下角的坐标给 PyMuPDF)
+                
+                // Canvas (Top-Left based) -> PDF (Bottom-Left based)
+                // rectX = x * ratioX
+                // rectY_Top = pdfPageH - (y * ratioY)
+                // rectY_Bottom = pdfPageH - ((y + h) * ratioY)
+                
+                const x0 = x * ratioX;
+                const y0 = y * ratioY; // 对于 PyMuPDF，通常可以直接用 Top-Left 坐标系如果它处理了变换，
+                                       // 但标准 PDF 坐标是 Bottom-Left。
+                                       // PyMuPDF 的 rect 是 (x0, y0, x1, y1)，其中 y0 是顶边距离，y1 是底边距离（从页面顶部算起）。
+                                       // PyMuPDF 的默认坐标系原点是页面的左上角（Top-Left），这与 Canvas 一致！
+                                       // 所以我们不需要做 Y 轴翻转，直接乘比例即可。
+                
+                const x1 = (x + w) * ratioX;
+                const y1 = (y + h) * ratioY;
+
+                // 格式化输出
+                const coordsStr = `[${x0.toFixed(1)}, ${y0.toFixed(1)}, ${x1.toFixed(1)}, ${y1.toFixed(1)}]`;
+                
+                coordsText.textContent = coordsStr;
+                coordsPanel.classList.remove('hidden');
+
+                // 保存给 Web 遮盖用 (Web 用的是 PDF-Lib，它是 Bottom-Left 坐标系，逻辑不同)
+                pdfRealCoords = {
+                    x: x0,
+                    y: pdfPageH - y0 - (y1 - y0), // 转换回 Bottom-Left
+                    w: x1 - x0,
+                    h: y1 - y0
+                };
+
+                processBtn.disabled = false;
+                processBtn.classList.remove('bg-gray-400', 'cursor-not-allowed');
+                processBtn.classList.add('bg-blue-600', 'hover:bg-blue-700');
+            } else {
+                selectionBox.style.display = 'none';
+            }
+        });
+
+        processBtn.addEventListener('click', async () => {
+            if (!pdfRealCoords || !pdfBytesOriginal) return;
+            
+            try {
+                loading.style.display = 'flex';
+                await new Promise(r => setTimeout(r, 50));
+
+                const { PDFDocument, rgb } = PDFLib;
+                const pdfDocEdit = await PDFDocument.load(pdfBytesOriginal, { ignoreEncryption: true });
+                const pages = pdfDocEdit.getPages();
+                
+                const whiteColor = rgb(1, 1, 1);
+                pages.forEach(page => {
+                    page.drawRectangle({
+                        x: pdfRealCoords.x,
+                        y: pdfRealCoords.y,
+                        width: pdfRealCoords.w,
+                        height: pdfRealCoords.h,
+                        color: whiteColor,
+                    });
+                });
+
+                const modifiedPdfBytes = await pdfDocEdit.save();
+                downloadBlob(modifiedPdfBytes, 'removed_watermark_masked.pdf', 'application/pdf');
+            } catch (err) {
+                console.error(err);
+                alert("处理出错：" + err.message);
+            } finally {
+                loading.style.display = 'none';
+            }
+        });
+
+        function downloadBlob(data, fileName, mimeType) {
+            const blob = new Blob([data], { type: mimeType });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = fileName;
+            document.body.appendChild(a);
+            a.click();
+            setTimeout(() => { document.body.removeChild(a); window.URL.revokeObjectURL(url); }, 100);
+        }
+    </script>
+</body>
+</html>
