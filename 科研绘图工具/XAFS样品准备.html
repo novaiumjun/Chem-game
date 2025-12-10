@@ -1,0 +1,595 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>XAFS 压片样品计算器 (Pro Max版)</title>
+    <style>
+        :root {
+            --bg-color: #f5f7fa;
+            --panel-bg: #ffffff;
+            --border-color: #dcdcdc;
+            --text-color: #2c3e50;
+            --highlight: #3498db;
+            --title-orange: #e67e22;
+            --title-green: #27ae60;
+            --title-blue: #2980b9;
+            --warning-bg: #fff3cd;
+            --warning-text: #856404;
+            --danger-bg: #f8d7da;
+            --danger-text: #721c24;
+        }
+
+        body {
+            font-family: 'Microsoft YaHei', 'Segoe UI', sans-serif;
+            background-color: var(--bg-color);
+            margin: 0;
+            padding: 20px;
+            color: var(--text-color);
+            user-select: none;
+        }
+
+        .main-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1.2fr;
+            gap: 15px;
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+
+        .panel {
+            background: var(--panel-bg);
+            border: 1px solid var(--border-color);
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+            display: flex;
+            flex-direction: column;
+        }
+
+        h2 {
+            margin: 0 0 15px 0;
+            font-size: 20px;
+            font-weight: bold;
+            border-bottom: 2px solid #eee;
+            padding-bottom: 8px;
+        }
+
+        .title-target { color: var(--title-orange); border-color: var(--title-orange); }
+        .title-matrix { color: var(--title-green); border-color: var(--title-green); }
+        .title-form { color: var(--title-blue); border-color: var(--title-blue); }
+
+        .group-box {
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+            padding: 12px 10px;
+            margin-bottom: 12px;
+            position: relative;
+        }
+        .group-label {
+            position: absolute;
+            top: -10px;
+            left: 10px;
+            background: var(--panel-bg);
+            padding: 0 5px;
+            font-size: 12px;
+            color: #7f8c8d;
+            font-weight: bold;
+        }
+
+        label { display: block; font-size: 13px; margin-bottom: 4px; font-weight: 500; }
+        input[type="text"], input[type="number"], select {
+            width: 100%;
+            padding: 6px;
+            border: 1px solid #ccc;
+            font-size: 14px;
+            border-radius: 4px;
+            box-sizing: border-box;
+            transition: border 0.2s;
+        }
+        input:focus { border-color: var(--highlight); outline: none; }
+
+        .row { display: flex; gap: 10px; align-items: center; margin-bottom: 10px; }
+        .col { flex: 1; }
+        
+        .btn {
+            background: #f8f9fa;
+            border: 1px solid #ced4da;
+            padding: 4px 12px;
+            cursor: pointer;
+            font-size: 12px;
+            border-radius: 4px;
+            color: #495057;
+            transition: all 0.2s;
+        }
+        .btn:hover { background: #e2e6ea; }
+        
+        .btn-calc {
+            width: 100%;
+            font-size: 18px;
+            font-weight: bold;
+            padding: 12px;
+            background: var(--highlight);
+            color: white;
+            border: none;
+            margin: 15px 0;
+            border-radius: 6px;
+            box-shadow: 0 4px 6px rgba(52, 152, 219, 0.2);
+            cursor: pointer;
+        }
+        .btn-calc:hover { background: #2980b9; transform: translateY(-1px); }
+
+        .radio-group { display: flex; gap: 15px; font-size: 13px; align-items: center; }
+        
+        .value-display {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            padding: 6px;
+            text-align: right;
+            font-family: Consolas, monospace;
+            font-size: 14px;
+            border-radius: 4px;
+            color: #2c3e50;
+        }
+
+        .matrix-list {
+            height: 150px;
+            border: 1px solid #e0e0e0;
+            overflow-y: auto;
+            font-size: 13px;
+            margin-top: 5px;
+            background: #fafafa;
+            border-radius: 4px;
+        }
+        .matrix-item {
+            padding: 6px 10px;
+            border-bottom: 1px solid #eee;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .matrix-item:hover { background: #eef2f7; }
+        .remove-btn { color: #e74c3c; border:none; background:none; cursor:pointer; font-weight:bold;}
+
+        .result-box {
+            text-align: center;
+            background: #f0f7ff;
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px dashed #3498db;
+        }
+        .result-value {
+            font-size: 32px;
+            font-weight: bold;
+            color: var(--highlight);
+            display: inline-block;
+            margin: 5px 0;
+        }
+        
+        .status-bar {
+            padding: 8px;
+            text-align: center;
+            font-weight: bold;
+            border-radius: 4px;
+            margin-top: 10px;
+            font-size: 14px;
+        }
+
+        .helper-text { font-size: 12px; color: #95a5a6; margin-top: 4px; line-height: 1.4; }
+
+        .warning-box {
+            background-color: var(--warning-bg);
+            color: var(--warning-text);
+            border: 1px solid #ffeeba;
+            padding: 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            margin-top: 15px;
+            display: none; 
+        }
+
+        /* 专门针对透射不可行的警告样式 */
+        .fluo-alert {
+            background-color: var(--danger-bg);
+            color: var(--danger-text);
+            border: 1px solid #f5c6cb;
+            padding: 12px;
+            border-radius: 6px;
+            margin-top: 10px;
+            font-size: 13px;
+            line-height: 1.6;
+        }
+        .fluo-alert strong { display: block; margin-bottom: 5px; font-size: 14px; }
+    </style>
+</head>
+<body>
+
+<div class="main-container">
+    
+    <!-- 面板 1: 目标元素 (TARGET) -->
+    <div class="panel">
+        <h2 class="title-target">1. 目标元素 (Target)</h2>
+        <div style="text-align: right; margin-bottom: 5px;">
+            <button class="btn" onclick="clearTarget()">清空目标</button>
+        </div>
+        
+        <div class="group-box" style="margin-top: 10px;">
+            <div class="group-label">含量格式 (Content Type)</div>
+            <div class="radio-group">
+                <label><input type="radio" name="contentType" value="mass" checked onchange="toggleContentMode()"> 质量百分比 (wt%)</label>
+                <label><input type="radio" name="contentType" value="atomic" onchange="toggleContentMode()"> 原子/摩尔比</label>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col">
+                <label>元素符号 (Element)</label>
+                <input type="text" id="targetElement" placeholder="例如: Mo" onchange="updateTargetInfo()">
+            </div>
+            <div class="col">
+                <label id="contentLabel">含量 (wt%)</label>
+                <input type="number" id="targetContent" value="10.0" step="0.1" placeholder="例如: 10">
+            </div>
+        </div>
+
+        <div class="group-box">
+            <div class="group-label">吸收边 (Edge)</div>
+            <div class="radio-group">
+                <label><input type="radio" name="edgeType" value="K" checked onchange="updateTargetInfo()"> K 边</label>
+                <label><input type="radio" name="edgeType" value="L3" onchange="updateTargetInfo()"> L3 边</label>
+            </div>
+        </div>
+
+        <div class="row" style="background: #fff8e1; padding: 5px; border-radius: 4px; border: 1px solid #ffe0b2;">
+            <div class="col">
+                <label style="color: #e65100; font-weight:bold;">目标 Edge Step (Δμx)</label>
+                <input type="number" id="targetStep" value="1.0" step="0.1">
+                <div class="helper-text">默认 1.0 (推荐范围 0.5 - 1.5)</div>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col">
+                <label>能量 (keV)</label>
+                <div class="value-display" id="dispEnergy">--</div>
+            </div>
+            <div class="col">
+                <label>波长 (Å)</label>
+                <div class="value-display" id="dispWave">--</div>
+            </div>
+        </div>
+
+        <div style="margin-top: 10px;">
+            <label>截面差 Δμ (cm²/g) [Elam库]</label>
+            <input type="number" id="inputDeltaMu" value="0">
+        </div>
+        
+        <div style="margin-top: 5px;">
+            <label>原子量 (g/mol)</label>
+            <div class="value-display" id="dispAtomicWeight">--</div>
+        </div>
+    </div>
+
+    <!-- 面板 2: 其他元素 (MATRIX) -->
+    <div class="panel">
+        <h2 class="title-matrix">2. 其他元素 (Matrix)</h2>
+        <div style="text-align: right; margin-bottom: 5px;">
+            <button class="btn" onclick="clearMatrix()">清空列表</button>
+        </div>
+        
+        <div class="group-box" style="margin-top: 10px;">
+            <div class="group-label">添加元素 (载体/配体)</div>
+            <div class="row">
+                <div class="col" style="flex: 0.6;">
+                    <input type="text" id="matrixInputSym" placeholder="符号 (如 Si)">
+                </div>
+                <div class="col">
+                    <input type="number" id="matrixInputCont" placeholder="数量" value="1">
+                </div>
+                <button class="btn" style="background:#27ae60; color:white; border:none;" onclick="addMatrixElement()">添加</button>
+            </div>
+        </div>
+
+        <div class="matrix-list" id="matrixList">
+        </div>
+
+        <div class="helper-text" style="margin-top:10px; background:#f0f0f0; padding:8px; border-radius:4px;">
+            <strong>📝 说明：</strong><br>
+            • 这里输入除目标元素以外的所有成分。<br>
+            • 输入载体 (如 CeO2) 可以帮助你记录实验信息，但不影响 wt% 模式下的计算。
+        </div>
+    </div>
+
+    <!-- 面板 3: 计算结果 (CALCULATION) -->
+    <div class="panel">
+        <h2 class="title-form">3. 计算与制样</h2>
+        
+        <div class="group-box">
+            <div class="group-label">压片参数</div>
+            <div class="row">
+                <div class="col" style="text-align: right; flex: 0.6;">
+                    <label style="margin-top: 8px;">模具直径 (mm): </label>
+                </div>
+                <div class="col">
+                    <input type="number" id="pelletDiameter" value="13.0" step="1">
+                </div>
+            </div>
+        </div>
+
+        <button class="btn btn-calc" onclick="calculate()">计算样品量 (Calculate)</button>
+
+        <!-- 结果显示框 -->
+        <div class="result-box" id="resultBox">
+            <div style="font-size: 14px; color: #555;">建议称取样品质量 (透射)</div>
+            <div class="result-value" id="resultWeight">--</div>
+            <span style="font-size: 16px; font-weight: bold;" id="unitSpan"> mg</span>
+        </div>
+
+        <div class="status-bar" id="statusBar" style="background:#eee; color:#666;">等待计算...</div>
+
+        <!-- 严重警告：透射不可行 -->
+        <div id="transmissionFailAlert" class="fluo-alert" style="display:none;">
+            <strong>⛔ 透射模式不可行 (Calculated Mass > 400mg)</strong>
+            当前计算所需的样品量过大，说明目标元素含量过低或吸收太弱。强行压这么厚的片子会导致严重的背景吸收，无法得到有效数据。<br><br>
+            <span style="color:#d63031; font-weight:bold;">👉 请务必使用 荧光模式 (Fluorescence Mode)</span>
+            <div style="margin-top:8px; border-top:1px dashed #e6a7ac; padding-top:8px; color:#333;">
+                <strong>荧光制样建议：</strong><br>
+                无需计算吸收边。请直接称取 <strong>20 - 200 mg</strong> 样品，压成一个表面平整、致密且有一定厚度（机械强度好）的药片即可。请勿添加 BN 稀释。
+            </div>
+        </div>
+
+        <hr style="border: 0; border-top: 1px solid #eee; margin: 15px 0;">
+
+        <!-- BN 建议区域 (透射模式用) -->
+        <div id="bnSection">
+            <div style="font-size: 15px; font-weight: bold; margin-bottom: 8px; color:#2c3e50;">🧪 稀释剂 (BN) 建议</div>
+            <div id="bnAdvice" style="font-size: 13px; line-height: 1.5; color: #34495e;">
+                点击上方按钮进行计算...
+            </div>
+            <!-- 荧光模式轻微警告 -->
+            <div class="warning-box" id="fluoWarning">
+                <strong>⚠️ 提示：</strong> 若您计划测试荧光模式，请忽略上方的稀释建议。BN 稀释会降低单位体积内的目标原子浓度，减弱荧光信号。
+            </div>
+        </div>
+        
+    </div>
+
+</div>
+
+<script>
+    // --- 数据库 (Elam/KEK Standard) ---
+    // Unit: cm²/g
+    const db = {
+        "C": { z: 6, mass: 12.01, k_e: 0.28, k_mu: 2200 }, 
+        "N": { z: 7, mass: 14.01, k_e: 0.40, k_mu: 1800 },
+        "O": { z: 8, mass: 16.00, k_e: 0.54, k_mu: 1500 },
+        "Al": { z: 13, mass: 26.98, k_e: 1.56, k_mu: 1200 },
+        "Si": { z: 14, mass: 28.09, k_e: 1.84, k_mu: 1000 },
+        "S":  { z: 16, mass: 32.06, k_e: 2.47, k_mu: 950 },
+        "Ti": { z: 22, mass: 47.87, k_e: 4.97, k_mu: 850 },
+        "V":  { z: 23, mass: 50.94, k_e: 5.47, k_mu: 720 },
+        "Cr": { z: 24, mass: 52.00, k_e: 5.99, k_mu: 620 },
+        "Mn": { z: 25, mass: 54.94, k_e: 6.54, k_mu: 540 },
+        "Fe": { z: 26, mass: 55.85, k_e: 7.11, k_mu: 310 },
+        "Co": { z: 27, mass: 58.93, k_e: 7.71, k_mu: 270 },
+        "Ni": { z: 28, mass: 58.69, k_e: 8.33, k_mu: 240 },
+        "Cu": { z: 29, mass: 63.55, k_e: 8.98, k_mu: 215 },
+        "Zn": { z: 30, mass: 65.38, k_e: 9.66, k_mu: 190 },
+        "Zr": { z: 40, mass: 91.22, k_e: 17.99, k_mu: 85 },
+        "Mo": { z: 42, mass: 95.95, k_e: 20.00, k_mu: 69.0, l3_e: 2.52, l3_mu: 350 },
+        "Ru": { z: 44, mass: 101.07, k_e: 22.12, k_mu: 55.0 },
+        "Rh": { z: 45, mass: 102.91, k_e: 23.22, k_mu: 49.0 },
+        "Pd": { z: 46, mass: 106.42, k_e: 24.35, k_mu: 43.0 },
+        "Ag": { z: 47, mass: 107.87, k_e: 25.51, k_mu: 39.0 },
+        "Ce": { z: 58, mass: 140.12, k_e: 40.44, k_mu: 14.0, l3_e: 5.72, l3_mu: 280 },
+        "Pt": { z: 78, mass: 195.08, l3_e: 11.56, l3_mu: 118 },
+        "Au": { z: 79, mass: 196.97, l3_e: 11.92, l3_mu: 110 },
+    };
+
+    let matrixElements = [];
+
+    function toggleContentMode() {
+        const mode = document.querySelector('input[name="contentType"]:checked').value;
+        const label = document.getElementById("contentLabel");
+        
+        if (mode === "mass") {
+            label.innerText = "含量 (质量百分比 wt%)";
+            document.getElementById("targetContent").placeholder = "例如: 10";
+            document.getElementById("targetContent").value = "10.0";
+        } else {
+            label.innerText = "化学式比例 (Atomic Ratio)";
+            document.getElementById("targetContent").placeholder = "例如: 1";
+            document.getElementById("targetContent").value = "1.0";
+        }
+        renderMatrixList();
+    }
+
+    function updateTargetInfo() {
+        const sym = document.getElementById('targetElement').value.trim();
+        if (!sym) return;
+        const fixedSym = sym.charAt(0).toUpperCase() + sym.slice(1).toLowerCase();
+        
+        const edge = document.querySelector('input[name="edgeType"]:checked').value;
+        const data = db[fixedSym];
+
+        if (data) {
+            document.getElementById('dispAtomicWeight').innerText = data.mass;
+            let energy = 0;
+            let mu = 0;
+
+            if (edge === "K") {
+                energy = data.k_e;
+                mu = data.k_mu;
+            } else {
+                energy = data.l3_e;
+                mu = data.l3_mu;
+            }
+
+            if (energy) {
+                document.getElementById('dispEnergy').innerText = energy.toFixed(4);
+                document.getElementById('dispWave').innerText = (12.398 / energy).toFixed(4);
+            } else {
+                document.getElementById('dispEnergy').innerText = "N/A";
+                document.getElementById('dispWave').innerText = "--";
+            }
+
+            if (mu) {
+                document.getElementById('inputDeltaMu').value = mu;
+            }
+        }
+    }
+
+    function addMatrixElement() {
+        const sym = document.getElementById('matrixInputSym').value.trim();
+        if (!sym) return;
+        const fixedSym = sym.charAt(0).toUpperCase() + sym.slice(1).toLowerCase();
+        const content = parseFloat(document.getElementById('matrixInputCont').value);
+
+        if (isNaN(content)) return;
+        const mass = db[fixedSym] ? db[fixedSym].mass : 0;
+        matrixElements.push({ sym: fixedSym, content: content, mass: mass || 50 });
+        
+        document.getElementById('matrixInputSym').value = "";
+        document.getElementById('matrixInputSym').focus();
+        renderMatrixList();
+    }
+
+    function clearMatrix() {
+        matrixElements = [];
+        renderMatrixList();
+    }
+    
+    function clearTarget() {
+        document.getElementById('targetElement').value = "";
+        const mode = document.querySelector('input[name="contentType"]:checked').value;
+        document.getElementById('targetContent').value = mode === "mass" ? "10.0" : "1.0";
+        document.getElementById('dispEnergy').innerText = "--";
+        document.getElementById('dispAtomicWeight').innerText = "--";
+        document.getElementById('inputDeltaMu').value = "0";
+    }
+
+    function renderMatrixList() {
+        const list = document.getElementById('matrixList');
+        const mode = document.querySelector('input[name="contentType"]:checked').value;
+        list.innerHTML = "";
+        
+        if (matrixElements.length === 0) {
+            list.innerHTML = `<div style="padding:10px; color:#999; text-align:center;">暂无其他元素</div>`;
+            return;
+        }
+
+        matrixElements.forEach((item, index) => {
+            const div = document.createElement('div');
+            div.className = 'matrix-item';
+            let labelText = mode === "mass" ? `${item.content} wt%` : `x ${item.content}`;
+            div.innerHTML = `<span><b>${item.sym}</b> : ${labelText}</span> <button class="remove-btn" onclick="removeMatrix(${index})">×</button>`;
+            list.appendChild(div);
+        });
+    }
+
+    function calculate() {
+        // Reset warnings
+        document.getElementById('transmissionFailAlert').style.display = "none";
+        document.getElementById('bnSection').style.display = "block";
+        document.getElementById('resultBox').style.opacity = "1";
+
+        const targetSym = document.getElementById('targetElement').value.trim();
+        const fixedTargetSym = targetSym.charAt(0).toUpperCase() + targetSym.slice(1).toLowerCase();
+        const targetContentVal = parseFloat(document.getElementById('targetContent').value);
+        const deltaMu = parseFloat(document.getElementById('inputDeltaMu').value);
+        const diameter = parseFloat(document.getElementById('pelletDiameter').value);
+        const targetStep = parseFloat(document.getElementById('targetStep').value);
+        const mode = document.querySelector('input[name="contentType"]:checked').value;
+        const targetData = db[fixedTargetSym];
+
+        if (!targetSym || !deltaMu || !diameter || !targetStep) {
+            document.getElementById('statusBar').innerText = "错误：请填写完整的目标元素信息和参数";
+            document.getElementById('statusBar').style.color = "red";
+            return;
+        }
+
+        let w_target = 0;
+        if (mode === "mass") {
+            w_target = targetContentVal / 100.0;
+        } else {
+            const targetAtomicMass = targetData ? targetData.mass : 0;
+            if (targetAtomicMass === 0) { alert("未知原子量"); return; }
+            let massFromTarget = targetContentVal * targetAtomicMass;
+            let totalMolarMass = massFromTarget;
+            matrixElements.forEach(m => {
+                let mMass = m.mass || 0; 
+                if (mMass === 0) mMass = 20; 
+                totalMolarMass += (m.content * mMass);
+            });
+            w_target = massFromTarget / totalMolarMass;
+        }
+
+        const radiusCm = (diameter / 10) / 2;
+        const areaCm2 = Math.PI * Math.pow(radiusCm, 2);
+        const massG = (areaCm2 * targetStep) / (deltaMu * w_target);
+        const massMg = massG * 1000;
+
+        const resEl = document.getElementById('resultWeight');
+        resEl.innerText = massMg.toFixed(1);
+        
+        const statusEl = document.getElementById('statusBar');
+        const warningBox = document.getElementById('fluoWarning');
+        const adviceBox = document.getElementById('bnAdvice');
+        const failAlert = document.getElementById('transmissionFailAlert');
+        
+        warningBox.style.display = "block";
+
+        // --- 逻辑判断升级 ---
+        // 阈值设为 400 mg。一般来说 13mm 模具压 400mg 已经很厚了，再多说明载量太低。
+        if (massMg > 400) {
+            // 透射不可行模式
+            statusEl.innerText = "⚠️ 不推荐透射模式 (Calculated > 400mg)";
+            statusEl.style.color = "#c0392b";
+            statusEl.style.background = "#fadbd8";
+            
+            // 隐藏 BN 建议，显示红色警告
+            document.getElementById('bnSection').style.display = "none";
+            failAlert.style.display = "block";
+            
+            // 结果数字变灰，表示不可用
+            document.getElementById('resultBox').style.opacity = "0.5";
+            
+        } else {
+            // 透射可行模式
+            failAlert.style.display = "none";
+            document.getElementById('bnSection').style.display = "block";
+            document.getElementById('resultBox').style.opacity = "1";
+
+            let statusText = "";
+            let statusColor = "#333";
+            let statusBg = "#eee";
+            let bnAdviceHTML = "";
+
+            if (massMg < 10) {
+                statusText = "样品量过少！建议稀释";
+                statusColor = "#c0392b";
+                statusBg = "#fadbd8";
+                bnAdviceHTML = `计算值仅为 <b>${massMg.toFixed(1)} mg</b>。建议与 BN 按 1:20 混合稀释后称取混合粉末。`;
+            } else if (massMg < 50) {
+                statusText = "样品量偏少，建议添加 BN";
+                statusColor = "#d35400";
+                statusBg = "#fdebd0";
+                let bnNeed = 150 - massMg;
+                bnAdviceHTML = `建议称取 <b>${massMg.toFixed(1)} mg</b> 样品，添加 <b>${bnNeed.toFixed(0)} mg</b> BN (总重约 150mg) 以保证成型。`;
+            } else {
+                statusText = "样品量适中 (Good for Transmission)";
+                statusColor = "#27ae60";
+                statusBg = "#d5f5e3";
+                bnAdviceHTML = `计算值 <b>${massMg.toFixed(1)} mg</b> 适合直接压片。如需增加强度可添加 30-50mg BN。`;
+            }
+            
+            statusEl.innerText = statusText;
+            statusEl.style.color = statusColor;
+            statusEl.style.background = statusBg;
+            adviceBox.innerHTML = bnAdviceHTML;
+        }
+    }
+</script>
+
+</body>
+</html>
